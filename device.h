@@ -61,7 +61,7 @@ OSStatus finalize_(DriverFinalInfo *info, size_t size) {
     if (nbuf == 0) {
         printf("Virtqueue layer failure\n");
         VFail();
-        return openErr;
+        return closErr;
     }
     SynchronizeIO();
     printf("Virtqueue layer finalized\n");
@@ -77,8 +77,6 @@ OSStatus finalize_(DriverFinalInfo *info, size_t size) {
     printf("Transport layer finalized\n");
 
     SynchronizeIO();
-//    FreePages(&ppage);
-//    SynchronizeIO();
     printf("Removed Successfully\n");
 
     return noErr;

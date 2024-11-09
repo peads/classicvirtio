@@ -165,7 +165,8 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 }
 
 OSStatus finalize(DriverFinalInfo *info) {
-    return finalize_(info, MAXBUFFERS);
+//    return finalize_(info, MAXBUFFERS);
+    return noErr;
 }
 
 OSStatus initialize(DriverInitInfo *info) {

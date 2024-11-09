@@ -185,7 +185,8 @@ void DConfigChange(void) {
 }
 
 OSStatus finalize(DriverFinalInfo *info) {
-	return finalize_(info, 256);
+    return noErr;
+//	return finalize_(info, 256);
 }
 
 OSStatus initialize(DriverInitInfo *info) {

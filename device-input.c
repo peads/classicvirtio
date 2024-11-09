@@ -36,14 +36,17 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
     OSStatus err;
     short ctrlType;
     QElemPtr qLink;
+    CntrlParam ctrlParam;
 
     switch (code) {
         case kControlCommand:
             err = controlErr;
-            qLink = pb.pb->cntrlParam.qLink;
+            ctrlParam = pb.pb->cntrlParam;
+            qLink = ctrlParam.qLink;
             ctrlType = qLink->qType;
-            printf("ctrl data: %d ctrl type: 0x%04X\n", qLink->qData[0],
-                   ctrlType);
+            printf("qlink data: %d qlink type: 0x%04X cs code: 0x%04X cs param: "
+                   "0x%04X\n", qLink->qData[0], ctrlType, ctrlParam.csCode,
+                   ctrlParam.csParam);
             if (!ctrlType || ctrlType & 0x4081) {
                 err = finalize(pb.finalInfo);
             }
