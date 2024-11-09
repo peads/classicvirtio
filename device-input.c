@@ -1,22 +1,7 @@
 /* Copyright (c) 2023 Elliot Nunn */
 /* Licensed under the MIT license */
 
-#include <Devices.h>
-#include <DriverServices.h>
-#include <Events.h>
-#include <MixedMode.h>
-#include <Types.h>
-
-#include "allocator.h"
-#include "callout68k.h"
-#include "printf.h"
-#include "panic.h"
-#include "transport.h"
-#include "scrollwheel.h"
-#include "virtqueue.h"
-
 #include "device.h"
-
 #include <string.h>
 
 struct event {
@@ -28,8 +13,6 @@ struct event {
 __attribute__((unused)) typedef void (*GNEFilterType)(EventRecord *event, Boolean *result);
 
 __attribute__((unused)) short funnel(long commandCode, void *pb);
-static OSStatus finalize(DriverFinalInfo *info);
-static OSStatus initialize(DriverInitInfo *info);
 static void handleEvent(struct event e);
 static void reQueue(int bufnum);
 
@@ -55,14 +38,6 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
     QElemPtr qLink;
 
     switch (code) {
-        case kInitializeCommand:
-        case kReplaceCommand:
-            err = initialize(pb.initialInfo);
-            break;
-        case kFinalizeCommand:
-        case kSupersededCommand:
-            err = finalize(pb.finalInfo);
-            break;
         case kControlCommand:
             err = controlErr;
             qLink = pb.pb->cntrlParam.qLink;
@@ -73,21 +48,8 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
                 err = finalize(pb.finalInfo);
             }
             break;
-        case kStatusCommand:
-            err = statusErr;
-            break;
-        case kOpenCommand:
-        case kCloseCommand:
-            err = noErr;
-            break;
-        case kReadCommand:
-            err = readErr;
-            break;
-        case kWriteCommand:
-            err = writErr;
-            break;
         default:
-            err = paramErr;
+            err = DoDriverIO_(spaceID, cmdID, pb, code, kind);
             break;
     }
     printf("SpaceID: 0x%04X Err: %hd Code: 0x%04X CmdID: 0x%04X Kind: 0x%04X\n",
@@ -101,29 +63,12 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
     }
 }
 
-static OSStatus finalize(DriverFinalInfo *info) {
+OSStatus finalize(DriverFinalInfo *info) {
     InitLog();
     sprintf(LogPrefix, "Input(%d) ", info->refNum);
 
-    SynchronizeIO();
-    int nbuf = QFinal(info->refNum, 4096 / sizeof(struct event));
-    if (nbuf == 0) {
-        printf("Virtqueue layer failure\n");
-        VFail();
-        return openErr;
-    }
-    SynchronizeIO();
-    printf("Virtqueue layer finalized\n");
-
-    CloseDriver(info->refNum);
-    SynchronizeIO();
-
-    if (!VFinal(&info->deviceEntry)) {
-        printf("Transport layer failure\n");
-        VFail();
-        return closErr;
-    }
-    printf("Transport layer finalized\n");
+    OSStatus ret = finalize_(info, 4096 / sizeof(struct event));
+    if (ret) return ret;
 
     SynchronizeIO();
     FreePages(&ppage);
@@ -133,7 +78,7 @@ static OSStatus finalize(DriverFinalInfo *info) {
     return noErr;
 }
 
-static OSStatus initialize(DriverInitInfo *info) {
+OSStatus initialize(DriverInitInfo *info) {
     InitLog();
     sprintf(LogPrefix, "Input(%d) ", info->refNum);
 

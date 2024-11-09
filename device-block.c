@@ -15,28 +15,19 @@ Does not yet seem to work right on PowerPC hosts!
 Read-only for now.
 */
 
-#include <Devices.h>
 #include <Disks.h>
 #include <DriverGestalt.h>
-#include <DriverServices.h>
-#include <Events.h>
 #include <Files.h>
 #include <HFSVolumes.h>
 #include <Memory.h>
 #include <Traps.h>
-#include <Types.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include "allocator.h"
-#include "log.h"
-#include "panic.h"
-#include "paramblkprint.h"
-#include "printf.h"
-#include "transport.h"
-#include "virtqueue.h"
-
 #include "device.h"
+#include "log.h"
+#include "paramblkprint.h"
+
 
 struct config {
 	uint64_t capacity;
@@ -83,8 +74,6 @@ struct fixedbuf {
 	char sector[512];
 } ;
 
-static OSStatus finalize(DriverFinalInfo *info);
-static OSStatus initialize(DriverInitInfo *info);
 static OSErr ioCall(struct IOParam *pb);
 static void installDrive(struct DrvQEl *drive, short driverRef);
 static struct DrvQEl *findDrive(short num);
@@ -150,33 +139,18 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 		printf("%s", PBPrint(pb.pb, (*pb.pb).ioParam.ioTrap | 0xa000, 1));
 	}
 
-	switch (code) {
-	case kInitializeCommand:
-	case kReplaceCommand:
-		err = initialize(pb.initialInfo);
-		break;
-	case kFinalizeCommand:
-	case kSupersededCommand:
-		err = finalize(pb.finalInfo);
-		break;
-	case kControlCommand:
-	case kStatusCommand:
-		err = controlStatusCall(&(*pb.pb).cntrlParam);
-		break;
-	case kOpenCommand:
-	case kCloseCommand:
-		err = noErr;
-		break;
-	case kReadCommand:
-		err = ioCall(&(*pb.pb).ioParam);
-		break;
-	case kWriteCommand:
-		err = writErr;
-		break;
-	default:
-		err = paramErr;
-		break;
-	}
+    switch (code) {
+        case kControlCommand:
+        case kStatusCommand:
+            err = controlStatusCall(&(*pb.pb).cntrlParam);
+            break;
+        case kReadCommand:
+            err = ioCall(&(*pb.pb).ioParam);
+            break;
+        default:
+            err = DoDriverIO_(spaceID, cmdID, pb, code, kind);
+            break;
+    }
 
 	if (code <= 6) {
 		printf("%s", PBPrint(pb.pb, (*pb.pb).ioParam.ioTrap | 0xa000, err));
@@ -190,11 +164,11 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 	}
 }
 
-static OSStatus finalize(DriverFinalInfo *info) {
-	return noErr;
+OSStatus finalize(DriverFinalInfo *info) {
+    return finalize_(info, MAXBUFFERS);
 }
 
-static OSStatus initialize(DriverInitInfo *info) {
+OSStatus initialize(DriverInitInfo *info) {
 	drvrRefNum = info->refNum;
 	regentryid = info->deviceEntry;
 	InitLog();
@@ -503,6 +477,12 @@ static OSErr controlStatusDispatch(long selector, void *pb) {
 	case -'intf': return dgInterface(pb);
  	case -'devt': return dgDeviceType(pb);
 	default:
+//        IOCommandContents *opaque = (IOCommandContents *) pb;
+//        short ctrlType = opaque->pb->cntrlParam.qLink->qType;
+//        if (!ctrlType || ctrlType & 0x4081) {
+//            return finalize(opaque->finalInfo);
+//        }
+
 		if (selector > 0) {
 			return controlErr;
 		} else {

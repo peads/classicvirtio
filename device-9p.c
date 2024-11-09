@@ -6,14 +6,12 @@
 
 #include <Disks.h>
 #include <DriverGestalt.h>
-#include <DriverServices.h>
 #include <Errors.h>
 #include <Files.h>
 #include <FSM.h>
 #include <Gestalt.h>
 #include <LowMem.h>
 #include <Memory.h>
-#include <MixedMode.h>
 #include <OSUtils.h>
 #include <Start.h>
 #include <Traps.h>
@@ -24,15 +22,11 @@
 #include "fids.h"
 #include "log.h"
 #include "multifork.h"
-#include "printf.h"
-#include "panic.h"
 #include "paramblkprint.h"
 #include "patch68k.h"
 #include "9p.h"
-#include "transport.h"
 #include "unicode.h"
 #include "universalfcb.h"
-#include "virtqueue.h"
 
 #include <stdbool.h> // leave till last, conflicts with Universal Interfaces
 #include <stddef.h>
@@ -67,8 +61,6 @@ struct longdqe {
 	void *dispatcher;
 };
 
-static OSStatus finalize(DriverFinalInfo *info);
-static OSStatus initialize(DriverInitInfo *info);
 static void installDrive(void);
 static void installExtFS(void);
 static void ensureFutureMount(void);
@@ -151,40 +143,28 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 		printf("Drvr_%s", PBPrint(pb.pb, (*pb.pb).ioParam.ioTrap | 0xa000, 1));
 	}
 
-	switch (code) {
-	case kInitializeCommand:
-	case kReplaceCommand:
-		err = initialize(pb.initialInfo);
-		break;
-	case kFinalizeCommand:
-	case kSupersededCommand:
-		err = finalize(pb.finalInfo);
-		break;
-	case kControlCommand:
-	case kStatusCommand:
-		err = controlStatusCall(&(*pb.pb).cntrlParam);
-		break;
-	case kOpenCommand:
-	case kCloseCommand:
-		err = noErr;
-		break;
-	case kReadCommand: {
-		struct IOParam *param = &pb.pb->ioParam;
-		param->ioActCount = param->ioReqCount;
-		for (long i=0; i<param->ioReqCount; i++) {
-			if (param->ioPosOffset+i < sizeof bootBlocks) {
-				param->ioBuffer[i] = bootBlocks[i];
-			} else {
-				param->ioBuffer[i] = 0;
-			}
-		}
-		err = noErr;
-		break;
-		}
-	default:
-		err = paramErr;
-		break;
-	}
+    switch (code) {
+        case kControlCommand:
+        case kStatusCommand:
+            err = controlStatusCall(&(*pb.pb).cntrlParam);
+            break;
+        case kReadCommand: {
+            struct IOParam *param = &pb.pb->ioParam;
+            param->ioActCount = param->ioReqCount;
+            for (long i = 0; i < param->ioReqCount; i++) {
+                if (param->ioPosOffset + i < sizeof bootBlocks) {
+                    param->ioBuffer[i] = bootBlocks[i];
+                } else {
+                    param->ioBuffer[i] = 0;
+                }
+            }
+            err = noErr;
+            break;
+        }
+        default:
+            err = DoDriverIO_(spaceID, cmdID, pb, code, kind);
+            break;
+    }
 
 	if (code <= 6) {
 		printf("%s", PBPrint(pb.pb, (*pb.pb).ioParam.ioTrap | 0xa000, err));
@@ -204,12 +184,11 @@ void DNotified(uint16_t q, const volatile uint32_t *retlen) {
 void DConfigChange(void) {
 }
 
-
-static OSStatus finalize(DriverFinalInfo *info) {
-	return noErr;
+OSStatus finalize(DriverFinalInfo *info) {
+	return finalize_(info, 256);
 }
 
-static OSStatus initialize(DriverInitInfo *info) {
+OSStatus initialize(DriverInitInfo *info) {
 	// Debug output
 	drvrRefNum = info->refNum;
 	regentryid = info->deviceEntry;
