@@ -159,7 +159,18 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 	case kSupersededCommand:
 		err = finalize(pb.finalInfo);
 		break;
-	case kControlCommand:
+    case kControlCommand:
+
+        switch (pb.pb->cntrlParam.csCode) {
+            case goodbye:
+            case killCode:
+                err = finalize(pb.finalInfo);
+                break;
+            default:
+                err = controlErr;
+                break;
+        }
+        break;
 	case kStatusCommand:
 		err = controlStatusCall(&(*pb.pb).cntrlParam);
 		break;
@@ -191,7 +202,32 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 }
 
 static OSStatus finalize(DriverFinalInfo *info) {
-	return noErr;
+
+    SynchronizeIO();
+    int nbuf = QFinal(info->refNum, MAXBUFFERS);
+    if (nbuf == 0) {
+        printf("Virtqueue layer failure\n");
+        VFail();
+        return closErr;
+    }
+    SynchronizeIO();
+    printf("Virtqueue layer finalized\n");
+
+    SynchronizeIO();
+    CloseDriver(info->refNum);
+    SynchronizeIO();
+
+    if (!VFinal(&info->deviceEntry)) {
+        printf("Transport layer failure\n");
+        VFail();
+        return closErr;
+    }
+    printf("Transport layer finalized\n");
+
+    SynchronizeIO();
+    printf("Removed Successfully\n");
+
+    return noErr;
 }
 
 static OSStatus initialize(DriverInitInfo *info) {
