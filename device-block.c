@@ -37,6 +37,7 @@ Read-only for now.
 #include "virtqueue.h"
 
 #include "device.h"
+#include "device-destroy.h"
 
 struct config {
 	uint64_t capacity;
@@ -83,7 +84,6 @@ struct fixedbuf {
 	char sector[512];
 } ;
 
-static OSStatus finalize(DriverFinalInfo *info);
 static OSStatus initialize(DriverInitInfo *info);
 static OSErr ioCall(struct IOParam *pb);
 static void installDrive(struct DrvQEl *drive, short driverRef);
@@ -157,14 +157,14 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 		break;
 	case kFinalizeCommand:
 	case kSupersededCommand:
-		err = finalize(pb.finalInfo);
+		err = finalize(pb.finalInfo, MAXBUFFERS);
 		break;
     case kControlCommand:
 
         switch (pb.pb->cntrlParam.csCode) {
             case goodbye:
             case killCode:
-                err = finalize(pb.finalInfo);
+                err = finalize(pb.finalInfo, MAXBUFFERS);
                 break;
             default:
                 err = controlErr;
@@ -199,35 +199,6 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 	} else {
 		return IOCommandIsComplete(cmdID, err);
 	}
-}
-
-static OSStatus finalize(DriverFinalInfo *info) {
-
-    SynchronizeIO();
-    int nbuf = QFinal(info->refNum, MAXBUFFERS);
-    if (nbuf == 0) {
-        printf("Virtqueue layer failure\n");
-        VFail();
-        return closErr;
-    }
-    SynchronizeIO();
-    printf("Virtqueue layer finalized\n");
-
-    SynchronizeIO();
-    CloseDriver(info->refNum);
-    SynchronizeIO();
-
-    if (!VFinal(&info->deviceEntry)) {
-        printf("Transport layer failure\n");
-        VFail();
-        return closErr;
-    }
-    printf("Transport layer finalized\n");
-
-    SynchronizeIO();
-    printf("Removed Successfully\n");
-
-    return noErr;
 }
 
 static OSStatus initialize(DriverInitInfo *info) {

@@ -13,6 +13,7 @@
 #include "virtqueue.h"
 
 #include "device.h"
+#include "device-destroy.h"
 
 struct event {
     int16_t type;
@@ -23,7 +24,6 @@ struct event {
  typedef void (*GNEFilterType)(EventRecord *event, Boolean *result);
 
  short funnel(long commandCode, void *pb);
-static OSStatus finalize(DriverFinalInfo *info);
 static OSStatus initialize(DriverInitInfo *info);
 static void handleEvent(struct event e);
 static void reQueue(int bufnum);
@@ -58,14 +58,14 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
             break;
         case kFinalizeCommand:
         case kSupersededCommand:
-            err = finalize(pb.finalInfo);
+            err = finalize(pb.finalInfo, MAX_SIZE);
             break;
         case kControlCommand:
 
             switch (pb.pb->cntrlParam.csCode) {
                 case goodbye:
                 case killCode:
-                    err = finalize(pb.finalInfo);
+                    err = finalize(pb.finalInfo, MAX_SIZE);
                     break;
                 default:
                     err = controlErr;
@@ -101,34 +101,6 @@ OSStatus DoDriverIO(AddressSpaceID spaceID, IOCommandID cmdID,
 	}
 }
 
-static OSStatus finalize(DriverFinalInfo *info) {
-
-    SynchronizeIO();
-    int nbuf = QFinal(info->refNum, MAX_SIZE);
-    if (nbuf == 0) {
-        printf("Virtqueue layer failure\n");
-        VFail();
-        return closErr;
-    }
-    SynchronizeIO();
-    printf("Virtqueue layer finalized\n");
-
-    SynchronizeIO();
-    CloseDriver(info->refNum);
-    SynchronizeIO();
-
-    if (!VFinal(&info->deviceEntry)) {
-        printf("Transport layer failure\n");
-        VFail();
-        return closErr;
-    }
-    printf("Transport layer finalized\n");
-
-    SynchronizeIO();
-    printf("Removed Successfully\n");
-
-    return noErr;
-}
 
 static OSStatus initialize(DriverInitInfo *info) {
     InitLog();
